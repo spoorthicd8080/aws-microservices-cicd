@@ -7,7 +7,6 @@ pipeline {
     }
 
     stages {
-
         stage('Checkout') {
             steps {
                 echo 'Checking out source code from GitHub'
@@ -24,26 +23,9 @@ pipeline {
             }
         }
 
-        stage('Prepare CI JWT Public Key') {
-            steps {
-                echo 'Generating temporary RSA public key for CI tests'
-
-                bat '''
-                    if not exist keys mkdir keys
-
-                    powershell -NoProfile -ExecutionPolicy Bypass -Command "$rsa = [System.Security.Cryptography.RSA]::Create(2048); $b64 = [Convert]::ToBase64String($rsa.ExportSubjectPublicKeyInfo()); $lines = [regex]::Matches($b64, '.{1,64}') | ForEach-Object { $_.Value }; $pem = @('-----BEGIN PUBLIC KEY-----') + $lines + @('-----END PUBLIC KEY-----'); Set-Content -Path 'keys\\jwt-public.pem' -Value $pem -Encoding ascii"
-
-                    if not exist keys\\jwt-public.pem exit /b 1
-
-                    echo CI public key generated successfully.
-                '''
-            }
-        }
-
         stage('Build and Test') {
             steps {
                 echo 'Building and testing all microservices'
-
                 bat 'call "C:\\Users\\sudha\\Downloads\\apache-maven-3.10.0\\bin\\mvn.cmd" -B -Dmaven.compiler.release=21 clean verify'
             }
         }
@@ -51,13 +33,14 @@ pipeline {
         stage('Build Docker Images') {
             steps {
                 echo 'Building all microservice Docker images'
-
                 bat 'docker compose --profile apps build'
             }
         }
 
         stage('Trivy Security Scan') {
             steps {
+                echo 'Scanning Docker images for HIGH and CRITICAL vulnerabilities'
+
                 bat '''
                     if not exist security-reports mkdir security-reports
 
