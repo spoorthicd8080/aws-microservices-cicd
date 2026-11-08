@@ -27,7 +27,7 @@ pipeline {
         stage('Build and Test') {
             steps {
                 echo 'Building and testing all microservices'
-                bat 'call "C:\\Users\\sudha\\Downloads\\apache-maven-3.10.0\\bin\\mvn.cmd" -B clean verify'
+                bat 'call "C:\\Users\\sudha\\Downloads\\apache-maven-3.10.0\\bin\\mvn.cmd" -B -Dmaven.compiler.release=21 clean verify'
             }
         }
 
