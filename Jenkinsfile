@@ -18,7 +18,7 @@ pipeline {
         stage('Verify Tools') {
             steps {
                 bat 'java -version'
-                bat 'mvn -version'
+                bat 'call "C:\\Users\\sudha\\Downloads\\apache-maven-3.10.0\\bin\\mvn.cmd" -version'
                 bat 'docker --version'
                 bat 'trivy --version'
             }
@@ -27,7 +27,7 @@ pipeline {
         stage('Build and Test') {
             steps {
                 echo 'Building and testing all microservices'
-                bat 'mvn -B clean verify'
+                bat 'call "C:\\Users\\sudha\\Downloads\\apache-maven-3.10.0\\bin\\mvn.cmd" -B clean verify'
             }
         }
 
