@@ -18,7 +18,7 @@
     <description>Order placement, pricing and lifecycle</description>
 
     <properties>
-        <java.version>26</java.version>
+        <java.version>21</java.version>
         <springdoc.version>2.8.9</springdoc.version>
         <!--
           Spring Cloud release train. 2025.0.x (Northfields) is the line that pairs with

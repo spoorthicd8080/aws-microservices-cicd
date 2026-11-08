@@ -1,12 +1,15 @@
 package com.ecommerce.product.controller;
 
+import com.ecommerce.product.configuration.JwtService;
 import com.ecommerce.product.dto.ProductResponse;
 import com.ecommerce.product.entity.ProductStatus;
 import com.ecommerce.product.exception.ResourceNotFoundException;
 import com.ecommerce.product.exception.UnprocessableRequestException;
 import com.ecommerce.product.service.ProductService;
+
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -27,6 +30,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+@AutoConfigureMockMvc(addFilters = false)
 @WebMvcTest(ProductController.class)
 class ProductControllerTest {
 
@@ -36,13 +40,19 @@ class ProductControllerTest {
     @MockitoBean
     private ProductService productService;
 
+    @MockitoBean
+    private JwtService jwtService;
+
     @Test
     void createProduct_valid_returns201WithLocation() throws Exception {
         UUID id = UUID.randomUUID();
         UUID categoryId = UUID.randomUUID();
+
         when(productService.createProduct(any())).thenReturn(new ProductResponse(
-                id, "TSHIRT-BLK-M", "Black tee", null, new BigDecimal("24.99"), "CAD",
-                categoryId, "Apparel", ProductStatus.ACTIVE, Instant.now(), Instant.now()));
+                id, "TSHIRT-BLK-M", "Black tee", null,
+                new BigDecimal("24.99"), "CAD",
+                categoryId, "Apparel", ProductStatus.ACTIVE,
+                Instant.now(), Instant.now()));
 
         mockMvc.perform(post("/api/v1/products")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -51,7 +61,8 @@ class ProductControllerTest {
                                  "currency":"CAD","categoryId":"%s"}
                                 """.formatted(categoryId)))
                 .andExpect(status().isCreated())
-                .andExpect(header().string("Location", endsWith("/api/v1/products/" + id)))
+                .andExpect(header().string(
+                        "Location", endsWith("/api/v1/products/" + id)))
                 .andExpect(jsonPath("$.sku").value("TSHIRT-BLK-M"))
                 .andExpect(jsonPath("$.categoryName").value("Apparel"));
     }
@@ -77,7 +88,9 @@ class ProductControllerTest {
     @Test
     void getProduct_unknownId_returns404ProblemDetail() throws Exception {
         UUID id = UUID.randomUUID();
-        when(productService.getProduct(id)).thenThrow(ResourceNotFoundException.of("Product", id));
+
+        when(productService.getProduct(id))
+                .thenThrow(ResourceNotFoundException.of("Product", id));
 
         mockMvc.perform(get("/api/v1/products/{id}", id))
                 .andExpect(status().isNotFound())
@@ -88,18 +101,22 @@ class ProductControllerTest {
     @Test
     void lookup_tooManyIds_returns422() throws Exception {
         when(productService.lookupProducts(any()))
-                .thenThrow(new UnprocessableRequestException("At most 100 ids may be looked up at once"));
+                .thenThrow(new UnprocessableRequestException(
+                        "At most 100 ids may be looked up at once"));
 
-        mockMvc.perform(get("/api/v1/products/lookup").param("ids", UUID.randomUUID().toString()))
+        mockMvc.perform(get("/api/v1/products/lookup")
+                        .param("ids", UUID.randomUUID().toString()))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.title").value("Unprocessable request"));
     }
 
     @Test
     void lookup_pathIsNotParsedAsAUuid() throws Exception {
-        when(productService.lookupProducts(any())).thenReturn(java.util.List.of());
+        when(productService.lookupProducts(any()))
+                .thenReturn(java.util.List.of());
 
-        mockMvc.perform(get("/api/v1/products/lookup").param("ids", UUID.randomUUID().toString()))
+        mockMvc.perform(get("/api/v1/products/lookup")
+                        .param("ids", UUID.randomUUID().toString()))
                 .andExpect(status().isOk());
     }
 }

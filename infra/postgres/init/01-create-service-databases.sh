@@ -25,3 +25,4 @@ EOSQL
 create_service_database ecommerce_user_db    "$USER_DB_USERNAME"    "$USER_DB_PASSWORD"
 create_service_database ecommerce_product_db "$PRODUCT_DB_USERNAME" "$PRODUCT_DB_PASSWORD"
 create_service_database ecommerce_order_db   "$ORDER_DB_USERNAME"   "$ORDER_DB_PASSWORD"
+
