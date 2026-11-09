@@ -8,6 +8,7 @@ pipeline {
 
     environment {
         AWS_REGION = 'ap-south-1'
+        DOCKER_HOST = 'tcp://127.0.0.1:2375'
         AWS_ACCOUNT_ID = '257312525299'
         ECR_REGISTRY = '257312525299.dkr.ecr.ap-south-1.amazonaws.com'
         EC2_HOST = '13.206.194.241'
