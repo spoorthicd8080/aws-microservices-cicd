@@ -6,6 +6,13 @@ pipeline {
         disableConcurrentBuilds()
     }
 
+    environment {
+        AWS_REGION = 'ap-south-1'
+        AWS_ACCOUNT_ID = '257312525299'
+        ECR_REGISTRY = '257312525299.dkr.ecr.ap-south-1.amazonaws.com'
+        EC2_HOST = '13.206.194.241'
+    }
+
     stages {
         stage('Checkout') {
             steps {
@@ -20,6 +27,7 @@ pipeline {
                 bat 'call "C:\\Users\\sudha\\Downloads\\apache-maven-3.10.0\\bin\\mvn.cmd" -version'
                 bat 'docker --version'
                 bat 'trivy --version'
+                bat 'aws --version'
             }
         }
 
@@ -33,7 +41,7 @@ pipeline {
 
         stage('Build Docker Images') {
             steps {
-                echo 'Building Docker images with temporary CI environment values'
+                echo 'Building Docker images'
 
                 withEnv([
                     'POSTGRES_SUPERUSER_PASSWORD=ci-only-root-password',
@@ -52,23 +60,15 @@ pipeline {
 
         stage('Trivy Security Scan') {
             steps {
-                echo 'Scanning all microservice Docker images'
-
                 bat 'if not exist security-reports mkdir security-reports'
-
-                echo 'Scanning User Service'
 
                 retry(3) {
                     bat 'trivy image --timeout 15m --severity HIGH,CRITICAL --exit-code 0 --format json --output security-reports/user-service-trivy.json ecommerce-platform-user-service:latest'
                 }
 
-                echo 'Scanning Product Service'
-
                 retry(3) {
                     bat 'trivy image --timeout 15m --severity HIGH,CRITICAL --exit-code 0 --format json --output security-reports/product-service-trivy.json ecommerce-platform-product-service:latest'
                 }
-
-                echo 'Scanning Order Service'
 
                 retry(3) {
                     bat 'trivy image --timeout 15m --severity HIGH,CRITICAL --exit-code 0 --format json --output security-reports/order-service-trivy.json ecommerce-platform-order-service:latest'
@@ -82,15 +82,80 @@ pipeline {
                                  allowEmptyArchive: false
             }
         }
+
+        stage('Verify AWS Access') {
+            steps {
+                echo 'Verifying AWS CLI credentials'
+                bat 'aws sts get-caller-identity --profile devops-project'
+            }
+        }
+
+        stage('Login to AWS ECR') {
+            steps {
+                bat '''
+                    aws ecr get-login-password --region %AWS_REGION% --profile devops-project | docker login --username AWS --password-stdin %ECR_REGISTRY%
+                '''
+            }
+        }
+
+        stage('Push Images to ECR') {
+            steps {
+                bat '''
+                    docker tag ecommerce-platform-user-service:latest %ECR_REGISTRY%/ecommerce-devops-user-service:latest
+                    docker tag ecommerce-platform-product-service:latest %ECR_REGISTRY%/ecommerce-devops-product-service:latest
+                    docker tag ecommerce-platform-order-service:latest %ECR_REGISTRY%/ecommerce-devops-order-service:latest
+
+                    docker push %ECR_REGISTRY%/ecommerce-devops-user-service:latest
+                    docker push %ECR_REGISTRY%/ecommerce-devops-product-service:latest
+                    docker push %ECR_REGISTRY%/ecommerce-devops-order-service:latest
+                '''
+            }
+        }
+
+        stage('Deploy to AWS EC2') {
+            steps {
+                withCredentials([
+                    sshUserPrivateKey(
+                        credentialsId: 'ec2-ssh-key',
+                        keyFileVariable: 'SSH_KEY',
+                        usernameVariable: 'SSH_USER'
+                    )
+                ]) {
+                    bat '''
+                        if not exist "%USERPROFILE%\\.ssh" mkdir "%USERPROFILE%\\.ssh"
+
+                        ssh-keyscan -H %EC2_HOST% >> "%USERPROFILE%\\.ssh\\known_hosts"
+
+                        ssh -i "%SSH_KEY%" -o BatchMode=yes -o StrictHostKeyChecking=yes %SSH_USER%@%EC2_HOST% "cd /home/ubuntu/aws-microservices-cicd && aws ecr get-login-password --region ap-south-1 | sudo docker login --username AWS --password-stdin 257312525299.dkr.ecr.ap-south-1.amazonaws.com && sudo docker compose --env-file .env -f docker-compose.aws.yml pull && sudo docker compose --env-file .env -f docker-compose.aws.yml up -d"
+                    '''
+                }
+            }
+        }
+
+       stage('Verify Deployment Health') {
+    steps {
+        withCredentials([
+            sshUserPrivateKey(
+                credentialsId: 'ec2-ssh-key',
+                keyFileVariable: 'SSH_KEY',
+                usernameVariable: 'SSH_USER'
+            )
+        ]) {
+            bat '''
+                ssh -i "%SSH_KEY%" -o BatchMode=yes -o StrictHostKeyChecking=yes %SSH_USER%@%EC2_HOST% "curl -fsS http://127.0.0.1:8081/actuator/health && curl -fsS http://127.0.0.1:8082/actuator/health && curl -fsS http://127.0.0.1:8083/actuator/health && curl -fsS http://127.0.0.1/ && curl -fsS http://127.0.0.1/api/v1/products"
+            '''
+        }
+    }
+} 
     }
 
     post {
         success {
-            echo 'CI pipeline completed successfully!'
+            echo 'SUCCESS: CI/CD pipeline and AWS deployment completed!'
         }
 
         failure {
-            echo 'CI pipeline failed. Check the Jenkins console output.'
+            echo 'FAILED: Check the Jenkins console output.'
         }
 
         always {
