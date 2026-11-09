@@ -52,24 +52,34 @@ pipeline {
 
         stage('Trivy Security Scan') {
             steps {
-                echo 'Scanning Docker images for vulnerabilities'
+                echo 'Scanning all microservice Docker images'
 
-                bat '''
-                    if not exist security-reports mkdir security-reports
+                bat 'if not exist security-reports mkdir security-reports'
 
-                    trivy image --severity HIGH,CRITICAL --exit-code 0 --format json --output security-reports/user-service-trivy.json ecommerce-platform-user-service:latest
+                echo 'Scanning User Service'
 
-                    trivy image --severity HIGH,CRITICAL --exit-code 0 --format json --output security-reports/product-service-trivy.json ecommerce-platform-product-service:latest
+                retry(3) {
+                    bat 'trivy image --timeout 15m --severity HIGH,CRITICAL --exit-code 0 --format json --output security-reports/user-service-trivy.json ecommerce-platform-user-service:latest'
+                }
 
-                    trivy image --severity HIGH,CRITICAL --exit-code 0 --format json --output security-reports/order-service-trivy.json ecommerce-platform-order-service:latest
-                '''
+                echo 'Scanning Product Service'
+
+                retry(3) {
+                    bat 'trivy image --timeout 15m --severity HIGH,CRITICAL --exit-code 0 --format json --output security-reports/product-service-trivy.json ecommerce-platform-product-service:latest'
+                }
+
+                echo 'Scanning Order Service'
+
+                retry(3) {
+                    bat 'trivy image --timeout 15m --severity HIGH,CRITICAL --exit-code 0 --format json --output security-reports/order-service-trivy.json ecommerce-platform-order-service:latest'
+                }
             }
         }
 
         stage('Archive Reports') {
             steps {
                 archiveArtifacts artifacts: 'security-reports/*.json',
-                                 allowEmptyArchive: true
+                                 allowEmptyArchive: false
             }
         }
     }
