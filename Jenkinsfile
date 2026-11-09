@@ -26,20 +26,33 @@ pipeline {
         stage('Build and Test') {
             steps {
                 echo 'Building and testing all microservices'
-                bat 'call "C:\\Users\\sudha\\Downloads\\apache-maven-3.10.0\\bin\\mvn.cmd" -B -Dmaven.compiler.release=21 clean verify'
+
+                bat 'call "C:\\Users\\sudha\\Downloads\\apache-maven-3.10.0\\bin\\mvn.cmd" -B "-Dmaven.compiler.release=21" clean verify'
             }
         }
 
         stage('Build Docker Images') {
             steps {
-                echo 'Building all microservice Docker images'
-                bat 'docker compose --profile apps build'
+                echo 'Building Docker images with temporary CI environment values'
+
+                withEnv([
+                    'POSTGRES_SUPERUSER_PASSWORD=ci-only-root-password',
+                    'PGADMIN_PASSWORD=ci-only-pgadmin-password',
+                    'USER_DB_USERNAME=ci_user',
+                    'USER_DB_PASSWORD=ci-only-user-password',
+                    'PRODUCT_DB_USERNAME=ci_product',
+                    'PRODUCT_DB_PASSWORD=ci-only-product-password',
+                    'ORDER_DB_USERNAME=ci_order',
+                    'ORDER_DB_PASSWORD=ci-only-order-password'
+                ]) {
+                    bat 'docker compose --profile apps build'
+                }
             }
         }
 
         stage('Trivy Security Scan') {
             steps {
-                echo 'Scanning Docker images for HIGH and CRITICAL vulnerabilities'
+                echo 'Scanning Docker images for vulnerabilities'
 
                 bat '''
                     if not exist security-reports mkdir security-reports
