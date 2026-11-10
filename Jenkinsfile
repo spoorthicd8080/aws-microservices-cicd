@@ -1,3 +1,4 @@
+```groovy
 pipeline {
     agent any
 
@@ -7,14 +8,11 @@ pipeline {
     }
 
     environment {
-        AWS_REGION = 'ap-south-1'
-        DOCKER_HOST = 'tcp://127.0.0.1:2375'
-        AWS_ACCOUNT_ID = '257312525299'
-        ECR_REGISTRY = '257312525299.dkr.ecr.ap-south-1.amazonaws.com'
-        EC2_HOST = '13.206.194.241'
+        MAVEN_HOME = 'C:\\Users\\sudha\\Downloads\\apache-maven-3.10.0'
     }
 
     stages {
+
         stage('Checkout') {
             steps {
                 echo 'Checking out source code from GitHub'
@@ -25,25 +23,28 @@ pipeline {
         stage('Verify Tools') {
             steps {
                 bat 'java -version'
-                bat 'call "C:\\Users\\sudha\\Downloads\\apache-maven-3.10.0\\bin\\mvn.cmd" -version'
+                bat 'call "%MAVEN_HOME%\\bin\\mvn.cmd" -version'
                 bat 'docker --version'
+                bat 'docker compose version'
                 bat 'trivy --version'
-                bat 'aws --version'
             }
         }
 
         stage('Build and Test') {
             steps {
-                echo 'Building and testing all microservices'
+                echo 'Building User Service'
+                bat 'call "%MAVEN_HOME%\\bin\\mvn.cmd" -B -f user-service\\pom.xml clean verify'
 
-                bat 'call "C:\\Users\\sudha\\Downloads\\apache-maven-3.10.0\\bin\\mvn.cmd" -B "-Dmaven.compiler.release=21" clean verify'
+                echo 'Building Product Service'
+                bat 'call "%MAVEN_HOME%\\bin\\mvn.cmd" -B -f product-service\\pom.xml clean verify'
+
+                echo 'Building Order Service'
+                bat 'call "%MAVEN_HOME%\\bin\\mvn.cmd" -B -f order-service\\pom.xml clean verify'
             }
         }
 
         stage('Build Docker Images') {
             steps {
-                echo 'Building Docker images'
-
                 withEnv([
                     'POSTGRES_SUPERUSER_PASSWORD=ci-only-root-password',
                     'PGADMIN_PASSWORD=ci-only-pgadmin-password',
@@ -63,17 +64,11 @@ pipeline {
             steps {
                 bat 'if not exist security-reports mkdir security-reports'
 
-                retry(3) {
-                    bat 'trivy image --timeout 15m --severity HIGH,CRITICAL --exit-code 0 --format json --output security-reports/user-service-trivy.json ecommerce-platform-user-service:latest'
-                }
+                bat 'trivy image --severity HIGH,CRITICAL --exit-code 0 --format json --output security-reports/user-service-trivy.json ecommerce-platform-user-service'
 
-                retry(3) {
-                    bat 'trivy image --timeout 15m --severity HIGH,CRITICAL --exit-code 0 --format json --output security-reports/product-service-trivy.json ecommerce-platform-product-service:latest'
-                }
+                bat 'trivy image --severity HIGH,CRITICAL --exit-code 0 --format json --output security-reports/product-service-trivy.json ecommerce-platform-product-service'
 
-                retry(3) {
-                    bat 'trivy image --timeout 15m --severity HIGH,CRITICAL --exit-code 0 --format json --output security-reports/order-service-trivy.json ecommerce-platform-order-service:latest'
-                }
+                bat 'trivy image --severity HIGH,CRITICAL --exit-code 0 --format json --output security-reports/order-service-trivy.json ecommerce-platform-order-service'
             }
         }
 
@@ -83,102 +78,20 @@ pipeline {
                                  allowEmptyArchive: false
             }
         }
-
-        stage('Verify AWS Access') {
-            steps {
-                withCredentials([
-                    string(credentialsId: 'aws-access-key-id', variable: 'AWS_ACCESS_KEY_ID'),
-                    string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
-                ]) {
-                    bat 'aws sts get-caller-identity'
-                }
-            }
-        }
-
-        stage('Login to AWS ECR') {
-            steps {
-                withCredentials([
-                    string(credentialsId: 'aws-access-key-id', variable: 'AWS_ACCESS_KEY_ID'),
-                    string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
-                ]) {
-                    bat 'aws ecr get-login-password --region %AWS_REGION% | docker login --username AWS --password-stdin %ECR_REGISTRY%'
-                }
-            }
-        }
-
-        stage('Push Images to ECR') {
-            steps {
-                withCredentials([
-                    string(credentialsId: 'aws-access-key-id', variable: 'AWS_ACCESS_KEY_ID'),
-                    string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
-                ]) {
-                    bat '''
-                        docker tag ecommerce-platform-user-service:latest %ECR_REGISTRY%/ecommerce-devops-user-service:latest
-                        docker tag ecommerce-platform-product-service:latest %ECR_REGISTRY%/ecommerce-devops-product-service:latest
-                        docker tag ecommerce-platform-order-service:latest %ECR_REGISTRY%/ecommerce-devops-order-service:latest
-
-                        docker push %ECR_REGISTRY%/ecommerce-devops-user-service:latest
-                        docker push %ECR_REGISTRY%/ecommerce-devops-product-service:latest
-                        docker push %ECR_REGISTRY%/ecommerce-devops-order-service:latest
-                    '''
-                }
-            }
-        }
-
-        stage('Deploy to AWS EC2') {
-            steps {
-                withCredentials([
-                    sshUserPrivateKey(
-                        credentialsId: 'ec2-ssh-key',
-                        keyFileVariable: 'SSH_KEY',
-                        usernameVariable: 'SSH_USER'
-                    )
-                ]) {
-                    bat '''
-                        if not exist "%USERPROFILE%\\.ssh" mkdir "%USERPROFILE%\\.ssh"
-
-                        ssh-keyscan -H %EC2_HOST% >> "%USERPROFILE%\\.ssh\\known_hosts"
-
-                        icacls "%SSH_KEY%" /inheritance:r
-                        icacls "%SSH_KEY%" /grant:r "SYSTEM:F"
-
-                        ssh -i "%SSH_KEY%" -o BatchMode=yes -o StrictHostKeyChecking=yes %SSH_USER%@%EC2_HOST% "cd /home/ubuntu/aws-microservices-cicd && aws ecr get-login-password --region ap-south-1 | sudo docker login --username AWS --password-stdin 257312525299.dkr.ecr.ap-south-1.amazonaws.com && sudo docker compose --env-file .env -f docker-compose.aws.yml pull && sudo docker compose --env-file .env -f docker-compose.aws.yml up -d"
-                    '''
-                }
-            }
-        }
-
-        stage('Verify Deployment Health') {
-            steps {
-                withCredentials([
-                    sshUserPrivateKey(
-                        credentialsId: 'ec2-ssh-key',
-                        keyFileVariable: 'SSH_KEY',
-                        usernameVariable: 'SSH_USER'
-                    )
-                ]) {
-                    bat '''
-                        icacls "%SSH_KEY%" /inheritance:r
-                        icacls "%SSH_KEY%" /grant:r "SYSTEM:F"
-
-                        ssh -i "%SSH_KEY%" -o BatchMode=yes -o StrictHostKeyChecking=yes %SSH_USER%@%EC2_HOST% "curl -fsS http://127.0.0.1:8081/actuator/health && curl -fsS http://127.0.0.1:8082/actuator/health && curl -fsS http://127.0.0.1:8083/actuator/health && curl -fsS http://127.0.0.1/ && curl -fsS http://127.0.0.1/api/v1/products"
-                    '''
-                }
-            }
-        }
     }
 
     post {
         success {
-            echo 'SUCCESS: CI/CD pipeline and AWS deployment completed!'
+            echo 'SUCCESS: All three microservices built and security scans completed!'
         }
 
         failure {
-            echo 'FAILED: Check the Jenkins console output.'
+            echo 'BUILD FAILED: Check Jenkins Console Output.'
         }
 
         always {
-            echo 'Pipeline execution finished.'
+            echo 'Pipeline execution completed.'
         }
     }
 }
+```
