@@ -85,33 +85,45 @@ pipeline {
         }
 
         stage('Verify AWS Access') {
-            steps {
-                echo 'Verifying AWS CLI credentials'
-                bat 'aws sts get-caller-identity --profile devops-project'
-            }
+    steps {
+        withCredentials([
+            string(credentialsId: 'aws-access-key-id', variable: 'AWS_ACCESS_KEY_ID'),
+            string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
+        ]) {
+            bat 'aws sts get-caller-identity'
         }
+    }
+}
 
-        stage('Login to AWS ECR') {
-            steps {
-                bat '''
-                    aws ecr get-login-password --region %AWS_REGION% --profile devops-project | docker login --username AWS --password-stdin %ECR_REGISTRY%
-                '''
-            }
+       stage('Login to AWS ECR') {
+    steps {
+        withCredentials([
+            string(credentialsId: 'aws-access-key-id', variable: 'AWS_ACCESS_KEY_ID'),
+            string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
+        ]) {
+            bat 'aws ecr get-login-password --region %AWS_REGION% | docker login --username AWS --password-stdin %ECR_REGISTRY%'
         }
+    }
+} 
 
         stage('Push Images to ECR') {
-            steps {
-                bat '''
-                    docker tag ecommerce-platform-user-service:latest %ECR_REGISTRY%/ecommerce-devops-user-service:latest
-                    docker tag ecommerce-platform-product-service:latest %ECR_REGISTRY%/ecommerce-devops-product-service:latest
-                    docker tag ecommerce-platform-order-service:latest %ECR_REGISTRY%/ecommerce-devops-order-service:latest
+    steps {
+        withCredentials([
+            string(credentialsId: 'aws-access-key-id', variable: 'AWS_ACCESS_KEY_ID'),
+            string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
+        ]) {
+            bat '''
+                docker tag ecommerce-platform-user-service:latest %ECR_REGISTRY%/ecommerce-devops-user-service:latest
+                docker tag ecommerce-platform-product-service:latest %ECR_REGISTRY%/ecommerce-devops-product-service:latest
+                docker tag ecommerce-platform-order-service:latest %ECR_REGISTRY%/ecommerce-devops-order-service:latest
 
-                    docker push %ECR_REGISTRY%/ecommerce-devops-user-service:latest
-                    docker push %ECR_REGISTRY%/ecommerce-devops-product-service:latest
-                    docker push %ECR_REGISTRY%/ecommerce-devops-order-service:latest
-                '''
-            }
+                docker push %ECR_REGISTRY%/ecommerce-devops-user-service:latest
+                docker push %ECR_REGISTRY%/ecommerce-devops-product-service:latest
+                docker push %ECR_REGISTRY%/ecommerce-devops-order-service:latest
+            '''
         }
+    }
+}
 
         stage('Deploy to AWS EC2') {
             steps {
