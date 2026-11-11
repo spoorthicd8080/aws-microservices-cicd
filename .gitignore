@@ -1,5 +1,6 @@
-# Secrets - never commit real credentials
+# Environment files and secrets
 .env
+.env.*
 *.env
 !.env.example
 
@@ -8,15 +9,34 @@ target/
 *.jar
 !**/.mvn/wrapper/maven-wrapper.jar
 
-# IDE / OS
+# IDE and operating system
 .idea/
 *.iml
 .vscode/
 .DS_Store
+Thumbs.db
 HELP.md
 
-# JWT signing keys - never commit these
+# JWT signing keys and certificates
 keys/
 *.pem
+*.key
 *.p12
 *.jks
+
+# Terraform local files and sensitive state
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+tfplan
+*.tfplan
+crash.log
+crash.*.log
+
+# Terraform override files
+*_override.tf
+*_override.tf.json
+override.tf
+override.tf.json
